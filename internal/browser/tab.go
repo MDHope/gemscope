@@ -1,4 +1,4 @@
-package ui
+package browser
 
 import (
 	"slices"
@@ -48,6 +48,9 @@ var (
 		BorderRight(false)
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+
+	inputFocusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	inputNoStyle      = lipgloss.NewStyle()
 )
 
 type TabMode int

@@ -1,4 +1,4 @@
-package ui
+package browser
 
 import (
 	"fmt"
@@ -8,6 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
+)
+
+const (
+	minContentWidth = 20
+	maxContentWidth = 100
 )
 
 var (
@@ -26,21 +31,11 @@ var (
 		return contentTitleStyle.BorderStyle(b)
 	}()
 
-	textStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle()
-	}()
-	headingStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle().Bold(true)
-	}()
-	blockQuotesStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle()
-	}()
-	linkJumperStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle().Foreground(special)
-	}()
-	linkStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle()
-	}()
+	textStyle        = lipgloss.NewStyle()
+	headingStyle     = lipgloss.NewStyle().Bold(true)
+	blockQuotesStyle = lipgloss.NewStyle()
+	linkJumperStyle  = lipgloss.NewStyle().Foreground(special)
+	linkStyle        = lipgloss.NewStyle()
 )
 
 type GemtextRenderer struct {
@@ -49,12 +44,19 @@ type GemtextRenderer struct {
 	hints   map[*gemtext.Node]string
 }
 
-func (t tab) contentUrlInputView() string {
+func (t tab) contentUrlInputView(isUrlFocused bool) string {
+	if isUrlFocused {
+		t.urlInput.PromptStyle = inputFocusedStyle
+		t.urlInput.TextStyle = inputFocusedStyle
+	} else {
+		t.urlInput.PromptStyle = inputNoStyle
+		t.urlInput.TextStyle = inputNoStyle
+	}
+
 	return fmt.Sprintf(t.urlInput.View() + "\n\n")
 }
 
 func (t tab) contentHeaderView() string {
-	// title := contentTitleStyle.Render("Mr. Pager")
 	line := strings.Repeat("─", max(0, t.viewport.Width))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line)
 }
@@ -100,7 +102,7 @@ func (r *GemtextRenderer) render(node *gemtext.Node) {
 func (r *GemtextRenderer) renderLink(node *gemtext.Node) string {
 	meta := node.Meta.(gemtext.LinkMeta)
 	style := linkStyle
-	prefix := "-> "
+	prefix := "->"
 	if r.tabMode == SelectLink {
 		if hint, ok := r.hints[node]; ok {
 			style = linkJumperStyle
@@ -108,13 +110,13 @@ func (r *GemtextRenderer) renderLink(node *gemtext.Node) string {
 		}
 	}
 	return fmt.Sprintf("%s%s - %s",
-		style.Underline(true).Render(prefix),
+		style.Render(prefix),
 		style.Render(" "+meta.Url),
 		style.Render(meta.Label))
 }
 
 func wrapText(text string, leftPadding int) string {
-	available := max(20, 100-leftPadding)
+	available := max(minContentWidth, maxContentWidth-leftPadding)
 
 	wrapped := wordwrap.String(text, available)
 	wrapped = wrap.String(wrapped, available)

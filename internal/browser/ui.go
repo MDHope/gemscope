@@ -1,8 +1,7 @@
-package ui
+package browser
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
@@ -18,10 +17,6 @@ const (
 	scrollStep           = 5
 	maxUrlLength         = 156
 )
-
-type navigateMsg struct {
-	Url string
-}
 
 type hintMatch struct {
 	hint string
@@ -42,12 +37,58 @@ type model struct {
 	hintMode     *hintMode
 }
 
-func InitUI(geminiClient *gemini_client.GeminiClient) {
+func Start(geminiClient *gemini_client.GeminiClient) {
 	p := tea.NewProgram(initialModel(geminiClient), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("UI init error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	at := m.getActiveTab()
+	currentMode := at.mode
+
+	switch msg := msg.(type) {
+	case navigateMsg:
+		return m.handleNavigation(msg.Url)
+	case tea.KeyMsg:
+		if msg.String() == "ctrl+q" {
+			return m, tea.Quit
+		}
+
+		switch currentMode {
+		case SelectLink:
+			return m.handleSelectLinkMode(msg)
+		case Insert, New:
+			return m.handleInsertMode(msg)
+		case View:
+			return m.handleViewMode(msg)
+		}
+	case tea.WindowSizeMsg:
+		return m.handleResize(msg)
+	}
+
+	at.viewport, cmd = at.viewport.Update(msg)
+	m.tabs[m.activeTab] = at
+
+	return m, cmd
+}
+
+func (m model) View() string {
+	doc := strings.Builder{}
+	at := m.getActiveTab()
+	isUrlFocused := at.urlInput.Focused()
+
+	renderedTabBar := m.renderTabBar()
+	doc.WriteString(renderedTabBar)
+
+	doc.WriteString(at.contentUrlInputView(isUrlFocused))
+
+	doc.WriteString(fmt.Sprintf("%s\n%s\n%s", at.contentHeaderView(), at.viewport.View(), at.contentFooterView()))
+
+	return docStyle.Render(doc.String())
 }
 
 func initialModel(geminiClient *gemini_client.GeminiClient) model {
@@ -64,102 +105,78 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-	currentMode := m.getActiveTab().mode
+func (m model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	updatedTabs := []*tab{}
 
-	switch msg := msg.(type) {
-	case navigateMsg:
-		return m.handleNavigation(msg.Url)
-	case tea.KeyMsg:
-		if currentMode == SelectLink {
-			return m.handleHintInput(msg)
-		}
+	for _, tab := range m.tabs {
+		tab.viewport.Width = msg.Width - viewportWidthPadding
+		tab.viewport.Height = msg.Height - viewportHeightOffset
+		tab.viewport.YPosition = viewportYPosition
+		tab.urlInput.Width = msg.Width
+		updatedTabs = append(updatedTabs, tab)
+	}
 
+	m.width = msg.Width
+	m.height = msg.Height
+	m.tabs = updatedTabs
+	return m, nil
+
+}
+
+func (m model) handleViewMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m = m.closeActiveTab()
+		return m, nil
+	case "L":
+		m.changeActiveTabMode(Insert)
+		cmd := m.tabs[m.activeTab].urlInput.Focus()
+		return m, cmd
+	case "j":
+		m.tabs[m.activeTab].viewport.ScrollDown(scrollStep)
+		return m, nil
+	case "k":
+		m.tabs[m.activeTab].viewport.ScrollUp(scrollStep)
+		return m, nil
+	case "{":
+		m = m.previousTab()
+		return m, nil
+	case "}":
+		m = m.nextTab()
+		return m, nil
+	case "ctrl+t":
+		m = m.appendNewTab()
+		return m, nil
+	case "f":
+		m.changeActiveTabMode(SelectLink)
+		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, SelectLink))
+		m.hintMode = &hintMode{}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.String() {
-		case "ctrl+q":
-			return m, tea.Quit
-		case "ctrl+c":
-			m = m.closeActiveTab()
-			return m, nil
-		case "esc":
-			m.changeActiveTabMode(View)
-			return m, nil
-		case "L":
-			m.changeActiveTabMode(Insert)
-			cmd := m.tabs[m.activeTab].urlInput.Focus()
-			return m, cmd
-		case "j":
-			if currentMode == View {
-				m.tabs[m.activeTab].viewport.ScrollDown(scrollStep)
-				return m, nil
-			}
-		case "k":
-			if currentMode == View {
-				m.tabs[m.activeTab].viewport.ScrollUp(scrollStep)
-				return m, nil
-			}
-		case "{":
-			if currentMode == View {
-				m = m.previousTab()
-				return m, nil
-			}
-		case "}":
-			if currentMode == View {
-				m = m.nextTab()
-				return m, nil
-			}
-		case "ctrl+t":
-			m = m.appendNewTab()
-			return m, nil
 		case "enter":
 			inputValue := m.tabs[m.activeTab].urlInput.Value()
 			m.loadPage(inputValue)
 			return m, nil
-
-		case "f":
-			if currentMode == View {
-				m.changeActiveTabMode(SelectLink)
-				m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, SelectLink))
-				m.hintMode = &hintMode{}
-				return m, nil
-			}
+		case "esc":
+			m.changeActiveTabMode(View)
+			return m, nil
 		}
-	case tea.WindowSizeMsg:
-		updatedTabs := []*tab{}
-
-		for _, tab := range m.tabs {
-			tab.viewport.Width = msg.Width - viewportWidthPadding
-			tab.viewport.Height = msg.Height - viewportHeightOffset
-			tab.viewport.YPosition = viewportYPosition
-			tab.urlInput.Width = msg.Width
-			updatedTabs = append(updatedTabs, tab)
-		}
-
-		m.width = msg.Width
-		m.height = msg.Height
-		m.tabs = updatedTabs
-		return m, nil
 	}
 
-	var cmdInput tea.Cmd
-	var cmdViewport tea.Cmd
-
+	var cmd tea.Cmd
 	at := m.getActiveTab()
-
-	if currentMode == Insert || currentMode == New {
-		at.urlInput, cmdInput = at.urlInput.Update(msg)
-		cmds = append(cmds, cmdInput)
-	}
-
-	at.viewport, cmdViewport = at.viewport.Update(msg)
-	m.tabs[m.activeTab] = at
-
-	cmds = append(cmds, cmdViewport)
-	return m, tea.Batch(cmds...)
+	at.urlInput, cmd = at.urlInput.Update(msg)
+	return m, cmd
 }
 
-func (m model) handleHintInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleSelectLinkMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if key == "esc" {
@@ -190,52 +207,6 @@ func (m model) handleHintInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func (m model) navigateTo(node *gemtext.Node) tea.Cmd {
-	linkMeta, ok := node.Meta.(gemtext.LinkMeta)
-	if !ok {
-		return nil
-	}
-
-	return func() tea.Msg {
-		return navigateMsg{Url: linkMeta.Url}
-	}
-}
-
-func (m model) handleNavigation(href string) (tea.Model, tea.Cmd) {
-	if !strings.HasPrefix(href, "gemini://") {
-		at := m.getActiveTab()
-		currHref := at.url
-		base, err := url.Parse(currHref)
-		if err != nil {
-			return m, nil
-		}
-
-		ref, err := url.Parse(href)
-		if err != nil {
-			return m, nil
-		}
-
-		href = base.ResolveReference(ref).String()
-	}
-
-	m.loadPage(href)
-	return m, nil
-}
-
-func (m model) View() string {
-	doc := strings.Builder{}
-	at := m.getActiveTab()
-
-	renderedTabBar := m.renderTabBar()
-	doc.WriteString(renderedTabBar)
-
-	doc.WriteString(at.contentUrlInputView())
-
-	doc.WriteString(fmt.Sprintf("%s\n%s\n%s", at.contentHeaderView(), at.viewport.View(), at.contentFooterView()))
-
-	return docStyle.Render(doc.String())
 }
 
 func (m model) loadPage(url string) {

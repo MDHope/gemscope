@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/MDHope/gemscope/internal/browser"
 	gemini_client "github.com/MDHope/gemscope/internal/gemini-client"
-	"github.com/MDHope/gemscope/internal/ui"
 )
 
 // "fmt"
@@ -11,7 +11,7 @@ import (
 
 func main() {
 	client := gemini_client.NewGeminiClient()
-	ui.InitUI(client)
+	browser.Start(client)
 
 	// content, _ := os.ReadFile("test_gemtext.txt")
 	// node := gemtext.Parse(string(content))
