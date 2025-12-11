@@ -61,11 +61,14 @@ const (
 
 type tab struct {
 	mode     TabMode
+	url      string
 	urlInput textinput.Model
-	content  string
 	viewport viewport.Model
 	title    string
-	nodes    *gemtext.Node
+	content  string
+	parsed   *gemtext.Node
+	links    []*gemtext.Node
+	hints    map[*gemtext.Node]string
 }
 
 func (m model) newTab() tab {
@@ -83,9 +86,11 @@ func (m model) newTab() tab {
 		mode:     New,
 		urlInput: ti,
 		content:  "",
+		parsed:   nil,
+		links:    nil,
+		hints:    nil,
 		viewport: vp,
 		title:    "New tab",
-		nodes:    nil,
 	}
 }
 
@@ -112,7 +117,7 @@ func (m model) renderTabBar() string {
 	return row + "\n\n"
 }
 
-func (m model) getActiveTab() tab {
+func (m model) getActiveTab() *tab {
 	return m.tabs[m.activeTab]
 }
 
@@ -147,7 +152,7 @@ func (m model) nextTab() model {
 func (m model) appendNewTab() model {
 	t := m.newTab()
 
-	m.tabs = append(m.tabs, t)
+	m.tabs = append(m.tabs, &t)
 	m.activeTab = len(m.tabs) - 1
 	return m
 }
@@ -162,13 +167,11 @@ func (m model) closeActiveTab() model {
 	return m
 }
 
-func (m model) changeActiveTabMode(mode TabMode) model {
+func (m model) changeActiveTabMode(mode TabMode) {
 	m.tabs[m.activeTab].mode = mode
-	return m
 }
 
-func (m model) updateTabContent(content string) model {
+func (m model) updateTabContent(content string) {
 	m.tabs[m.activeTab].content = content
 	m.tabs[m.activeTab].viewport.SetContent(content)
-	return m
 }

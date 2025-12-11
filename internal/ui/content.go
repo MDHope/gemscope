@@ -46,6 +46,12 @@ var (
 	}()
 )
 
+type GemtextRenderer struct {
+	tabMode TabMode
+	sb      *strings.Builder
+	hints   map[*gemtext.Node]string
+}
+
 func (t tab) contentUrlInputView() string {
 	return fmt.Sprintf(t.urlInput.View() + "\n\n")
 }
@@ -62,19 +68,14 @@ func (t tab) contentFooterView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
 
-func contentResponseView(raw string, tabMode TabMode) string {
-	parsed := gemtext.Parse(raw)
-
-	return renderContent(parsed, tabMode)
-}
-
-func renderContent(node *gemtext.Node, tabMode TabMode) string {
+func renderGemtext(node *gemtext.Node, hints map[*gemtext.Node]string, tabMode TabMode) string {
 	var sb strings.Builder
-	render(node, &sb, tabMode)
-	return sb.String()
+	r := &GemtextRenderer{tabMode: tabMode, sb: &sb, hints: hints}
+	r.render(node)
+	return r.sb.String()
 }
 
-func render(node *gemtext.Node, sb *strings.Builder, tabMode TabMode) {
+func (r *GemtextRenderer) render(node *gemtext.Node) {
 	var content string
 
 	switch node.Type {
@@ -82,25 +83,37 @@ func render(node *gemtext.Node, sb *strings.Builder, tabMode TabMode) {
 		content = textStyle.Render(wrapText(node.RawContent, 0))
 
 	case gemtext.NodeLink:
-		if tabMode == SelectLink {
-			content = fmt.Sprintf("%s - %s", linkJumperStyle.Underline(true).Render("aa "+node.Meta.(gemtext.LinkMeta).Url), linkJumperStyle.Render(node.Meta.(gemtext.LinkMeta).Label))
-		} else {
-			content = fmt.Sprintf("%s - %s", linkStyle.Underline(true).Render("-> "+node.Meta.(gemtext.LinkMeta).Url), linkStyle.Render(node.Meta.(gemtext.LinkMeta).Label))
-		}
+		content = r.renderLink(node)
 
 	case gemtext.NodeBlockquote:
 		content = blockQuotesStyle.Render(wrapText(node.RawContent, 2))
+
 	case gemtext.NodeHeading1, gemtext.NodeHeading2, gemtext.NodeHeading3:
 		content = headingStyle.Render(wrapText(node.RawContent, 0))
 	}
 
-	sb.WriteString("\n")
-
-	sb.WriteString(content)
+	r.sb.WriteString("\n")
+	r.sb.WriteString(content)
 
 	for _, child := range node.Children {
-		render(child, sb, tabMode)
+		r.render(child)
 	}
+}
+
+func (r *GemtextRenderer) renderLink(node *gemtext.Node) string {
+	meta := node.Meta.(gemtext.LinkMeta)
+	style := linkStyle
+	prefix := "-> "
+	if r.tabMode == SelectLink {
+		if hint, ok := r.hints[node]; ok {
+			style = linkJumperStyle
+			prefix = hint
+		}
+	}
+	return fmt.Sprintf("%s%s - %s",
+		style.Underline(true).Render(prefix),
+		style.Render(" "+meta.Url),
+		style.Render(meta.Label))
 }
 
 func wrapText(text string, leftPadding int) string {
