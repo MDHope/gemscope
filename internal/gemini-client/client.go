@@ -6,15 +6,18 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type GeminiClient struct {
 	knownHosts map[string]string
 	hostsFile  string
+	Timeout    time.Duration
 }
 
 func NewGeminiClient() *GeminiClient {
@@ -24,6 +27,7 @@ func NewGeminiClient() *GeminiClient {
 	client := &GeminiClient{
 		knownHosts: make(map[string]string),
 		hostsFile:  hostsFile,
+		Timeout:    10 * time.Second,
 	}
 
 	client.loadKnownHosts()
@@ -49,11 +53,17 @@ func (c *GeminiClient) Fetch(geminiURL string) (*GeminiResponse, error) {
 		ServerName:         hostname,
 	}
 
-	conn, err := tls.Dial("tcp", host, config)
+	dialer := &net.Dialer{
+		Timeout: c.Timeout,
+	}
+
+	start := time.Now()
+	conn, err := tls.DialWithDialer(dialer, "tcp", host, config)
 	if err != nil {
 		return &GeminiResponse{}, fmt.Errorf("Connection failed: %v\n", err)
 	}
 
+	conn.SetDeadline(start.Add(c.Timeout))
 	defer conn.Close()
 
 	state := conn.ConnectionState()
@@ -75,11 +85,13 @@ func (c *GeminiClient) Fetch(geminiURL string) (*GeminiResponse, error) {
 		}
 	}
 
+	conn.SetWriteDeadline(time.Now().Add(c.Timeout))
 	request := geminiURL + "\r\n"
 	if _, err := conn.Write([]byte(request)); err != nil {
 		return &GeminiResponse{}, fmt.Errorf("Write failed: %w\n", err)
 	}
 
+	conn.SetWriteDeadline(time.Now().Add(c.Timeout))
 	reader := bufio.NewReader(conn)
 	response := &GeminiResponse{}
 

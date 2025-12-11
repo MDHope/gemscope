@@ -236,6 +236,7 @@ func (m model) View() string {
 func (m model) loadPage(url string) {
 	res, err := m.geminiClient.Fetch(url)
 	if err != nil {
+		m.updateTabContent(err.Error())
 		return
 	}
 
