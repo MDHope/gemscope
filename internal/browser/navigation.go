@@ -25,8 +25,8 @@ func (m model) navigateTo(node *gemtext.Node) tea.Cmd {
 
 func (m model) handleNavigation(href string) (tea.Model, tea.Cmd) {
 	if !strings.HasPrefix(href, "gemini://") {
-		at := m.getActiveTab()
-		currHref := at.url
+		h := m.getActiveHistoryItem()
+		currHref := h.url
 		base, err := url.Parse(currHref)
 		if err != nil {
 			return m, nil

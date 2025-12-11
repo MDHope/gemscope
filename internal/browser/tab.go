@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	gemini_client "github.com/MDHope/gemscope/internal/gemini-client"
 	"github.com/MDHope/gemscope/internal/gemtext"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -48,9 +49,6 @@ var (
 		BorderRight(false)
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
-
-	inputFocusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	inputNoStyle      = lipgloss.NewStyle()
 )
 
 type TabMode int
@@ -62,18 +60,23 @@ const (
 	SelectLink TabMode = 3
 
 	tabYPosition = 20
+	maxHistory   = 5
 )
+
+type historyItem struct {
+	response *gemini_client.GeminiResponse
+	url      string
+}
 
 type tab struct {
 	mode     TabMode
-	url      string
 	urlInput textinput.Model
 	viewport viewport.Model
 	title    string
-	content  string
 	parsed   *gemtext.Node
 	links    []*gemtext.Node
 	hints    map[*gemtext.Node]string
+	history  []*historyItem
 }
 
 func (m model) newTab() tab {
@@ -90,10 +93,10 @@ func (m model) newTab() tab {
 	return tab{
 		mode:     New,
 		urlInput: ti,
-		content:  "",
-		parsed:   nil,
 		links:    nil,
 		hints:    nil,
+		parsed:   nil,
+		history:  []*historyItem{},
 		viewport: vp,
 		title:    "New tab",
 	}
@@ -122,10 +125,6 @@ func (m model) renderTabBar() string {
 	return row + "\n\n"
 }
 
-func (m model) getActiveTab() *tab {
-	return m.tabs[m.activeTab]
-}
-
 func getTabTitle(url string) string {
 	url = strings.TrimPrefix(url, "gemini://")
 	url = strings.Replace(url, "/", "", -1)
@@ -134,6 +133,36 @@ func getTabTitle(url string) string {
 	} else {
 		return url
 	}
+}
+
+func (m model) goBack() {
+	at := m.getActiveTab()
+	if len(at.history) < 2 {
+		return
+	}
+
+	lastIdx := len(at.history) - 1
+	item := at.history[lastIdx-1]
+	at.history = at.history[:lastIdx]
+	m.setUrlInput(item.url)
+
+	m.setPage(item.response, item.url)
+}
+
+func (m model) appendToHistory(item *historyItem) {
+	m.tabs[m.activeTab].history = append(m.tabs[m.activeTab].history, item)
+	if len(m.tabs[m.activeTab].history) > maxHistory {
+		m.tabs[m.activeTab].history = m.tabs[m.activeTab].history[1:]
+	}
+}
+
+func (m model) getActiveTab() *tab {
+	return m.tabs[m.activeTab]
+}
+
+func (m model) getActiveHistoryItem() *historyItem {
+	history := m.tabs[m.activeTab].history
+	return history[len(history)-1]
 }
 
 func (m model) previousTab() model {
@@ -146,6 +175,11 @@ func (m model) nextTab() model {
 	id := min(m.activeTab+1, len(m.tabs)-1)
 	m.activeTab = id
 	return m
+}
+
+func (m model) setUrlInput(url string) {
+	m.tabs[m.activeTab].urlInput.SetValue(url)
+	m.tabs[m.activeTab].urlInput.SetCursor(len(url))
 }
 
 func (m model) appendNewTab() model {
@@ -171,6 +205,5 @@ func (m model) changeActiveTabMode(mode TabMode) {
 }
 
 func (m model) updateTabContent(content string) {
-	m.tabs[m.activeTab].content = content
 	m.tabs[m.activeTab].viewport.SetContent(content)
 }

@@ -16,7 +16,6 @@ const (
 )
 
 var (
-	// colors
 	special = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
 
 	contentTitleStyle = func() lipgloss.Style {
@@ -36,6 +35,9 @@ var (
 	blockQuotesStyle = lipgloss.NewStyle()
 	linkJumperStyle  = lipgloss.NewStyle().Foreground(special)
 	linkStyle        = lipgloss.NewStyle()
+
+	inputFocusedStyle = lipgloss.NewStyle().Foreground(special)
+	inputNoStyle      = lipgloss.NewStyle()
 )
 
 type GemtextRenderer struct {

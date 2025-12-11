@@ -128,6 +128,9 @@ func (m model) handleViewMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		m = m.closeActiveTab()
 		return m, nil
+	case "H":
+		m.goBack()
+		return m, nil
 	case "L":
 		m.changeActiveTabMode(Insert)
 		cmd := m.tabs[m.activeTab].urlInput.Focus()
@@ -166,6 +169,7 @@ func (m model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "esc":
 			m.changeActiveTabMode(View)
+			m.tabs[m.activeTab].urlInput.Blur()
 			return m, nil
 		}
 	}
@@ -211,11 +215,23 @@ func (m model) handleSelectLinkMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) loadPage(url string) {
 	res, err := m.geminiClient.Fetch(url)
+
+	newHistoryItem := &historyItem{}
+	newHistoryItem.response = res
+	newHistoryItem.url = url
+	m.appendToHistory(newHistoryItem)
+
+	m.setUrlInput(url)
+
 	if err != nil {
 		m.updateTabContent(err.Error())
 		return
 	}
 
+	m.setPage(res, url)
+}
+
+func (m model) setPage(res *gemini_client.GeminiResponse, url string) {
 	var newTabContent string
 	parsedRes := gemtext.Parse(res.Body)
 
@@ -233,13 +249,11 @@ func (m model) loadPage(url string) {
 		newTabContent = fmt.Sprintf("%d: %s\n", res.Status, res.Meta)
 	}
 
-	m.updateTabContent(newTabContent)
 	m.tabs[m.activeTab].parsed = parsedRes
-	m.tabs[m.activeTab].url = url
 	m.tabs[m.activeTab].links = collectedLinks
 	m.tabs[m.activeTab].hints = hints
-	m.tabs[m.activeTab].urlInput.SetValue(url)
-	m.tabs[m.activeTab].urlInput.SetCursor(len(url))
+
+	m.updateTabContent(newTabContent)
 	m.changeActiveTabMode(View)
 	m.tabs[m.activeTab].title = getTabTitle(url)
 	m.tabs[m.activeTab].urlInput.Blur()
