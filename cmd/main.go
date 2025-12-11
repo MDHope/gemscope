@@ -1,0 +1,32 @@
+package main
+
+import (
+	gemini_client "github.com/MDHope/gemscope/internal/gemini-client"
+	"github.com/MDHope/gemscope/internal/ui"
+)
+
+// "fmt"
+// "os"
+//
+
+func main() {
+	client := gemini_client.NewGeminiClient()
+	ui.InitUI(client)
+
+	// content, _ := os.ReadFile("test_gemtext.txt")
+	// node := gemtext.Parse(string(content))
+	// fmt.Println(node.Print())
+	// if len(os.Args) < 2 {
+	// 	fmt.Println("Usage: go run main.go gemini://example.com/path")
+	// 	os.Exit(1)
+	// }
+	//
+	// response, err := client.Fetch(os.Args[1])
+	// if err != nil {
+	// 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	// 	os.Exit(1)
+	// }
+	//
+	// fmt.Printf("%d: %s\n", response.Status, response.Meta)
+	// fmt.Print(response.Body)
+}
