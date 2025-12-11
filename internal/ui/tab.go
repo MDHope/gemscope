@@ -57,6 +57,8 @@ const (
 	Insert     TabMode = 1
 	View       TabMode = 2
 	SelectLink TabMode = 3
+
+	tabYPosition = 20
 )
 
 type tab struct {
@@ -75,11 +77,11 @@ func (m model) newTab() tab {
 	ti := textinput.New()
 	ti.Placeholder = "Enter url..."
 	ti.Focus()
-	ti.CharLimit = 156
+	ti.CharLimit = maxUrlLength
 	ti.Width = m.width
 
-	vp := viewport.New(m.width, m.height-15)
-	vp.YPosition = 20
+	vp := viewport.New(m.width, m.height-viewportHeightOffset)
+	vp.YPosition = tabYPosition
 	vp.SetContent("")
 
 	return tab{
@@ -125,16 +127,10 @@ func getTabTitle(url string) string {
 	url = strings.TrimPrefix(url, "gemini://")
 	url = strings.Replace(url, "/", "", -1)
 	if len(url) > 10 {
-		parts := strings.Split(url, "")
-		url = strings.Join(parts[0:10], "") + "..."
-		return url
+		return url[:10] + "..."
 	} else {
 		return url
 	}
-}
-
-func (m model) getPreviousTabId() int {
-	return max(m.activeTab-1, 0)
 }
 
 func (m model) previousTab() model {
@@ -163,7 +159,7 @@ func (m model) closeActiveTab() model {
 	}
 
 	m.tabs = slices.Delete(m.tabs, m.activeTab, m.activeTab+1)
-	m.activeTab = m.getPreviousTabId()
+	m.activeTab = max(m.activeTab-1, 0)
 	return m
 }
 

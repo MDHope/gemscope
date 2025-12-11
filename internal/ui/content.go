@@ -41,9 +41,6 @@ var (
 	linkStyle = func() lipgloss.Style {
 		return lipgloss.NewStyle()
 	}()
-	linkJumpStyle = func() lipgloss.Style {
-		return lipgloss.NewStyle()
-	}()
 )
 
 type GemtextRenderer struct {

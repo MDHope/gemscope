@@ -11,6 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const (
+	viewportHeightOffset = 15
+	viewportWidthPadding = 2
+	viewportYPosition    = 5
+	scrollStep           = 5
+	maxUrlLength         = 156
+)
+
 type navigateMsg struct {
 	Url string
 }
@@ -75,9 +83,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.closeActiveTab()
 			return m, nil
 		case "esc":
-			if currentMode == SelectLink {
-				m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, View))
-			}
 			m.changeActiveTabMode(View)
 			return m, nil
 		case "L":
@@ -86,12 +91,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case "j":
 			if currentMode == View {
-				m.tabs[m.activeTab].viewport.ScrollDown(5)
+				m.tabs[m.activeTab].viewport.ScrollDown(scrollStep)
 				return m, nil
 			}
 		case "k":
 			if currentMode == View {
-				m.tabs[m.activeTab].viewport.ScrollUp(5)
+				m.tabs[m.activeTab].viewport.ScrollUp(scrollStep)
 				return m, nil
 			}
 		case "{":
@@ -124,9 +129,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedTabs := []*tab{}
 
 		for _, tab := range m.tabs {
-			tab.viewport.Width = msg.Width - 2
-			tab.viewport.Height = msg.Height - 15
-			tab.viewport.YPosition = 5
+			tab.viewport.Width = msg.Width - viewportWidthPadding
+			tab.viewport.Height = msg.Height - viewportHeightOffset
+			tab.viewport.YPosition = viewportYPosition
 			tab.urlInput.Width = msg.Width
 			updatedTabs = append(updatedTabs, tab)
 		}
