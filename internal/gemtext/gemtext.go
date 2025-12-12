@@ -124,7 +124,7 @@ func parseLine(line string) (*Node, int) {
 	case strings.HasPrefix(line, string(Heading1Tag)):
 		return &Node{Type: NodeHeading1, RawContent: line, Meta: TextMeta{Content: line[2:]}}, 1
 	case strings.HasPrefix(line, string(LinkTag)):
-		return parseLink(line), 4
+		return ParseLink(line), 4
 	case strings.HasPrefix(line, string(BlockquoteTag)):
 		return &Node{Type: NodeBlockquote, RawContent: line, Meta: TextMeta{Content: strings.TrimPrefix(line, ">")}}, 4
 	case strings.HasPrefix(line, string(LinkTag)):
@@ -140,7 +140,7 @@ func parseLine(line string) (*Node, int) {
 	return nil, 0
 }
 
-func parseLink(line string) *Node {
+func ParseLink(line string) *Node {
 	trimmedLine := strings.TrimPrefix(line, "=>")
 	trimmedLine = strings.TrimSpace(trimmedLine)
 

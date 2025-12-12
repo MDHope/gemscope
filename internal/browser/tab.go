@@ -54,10 +54,11 @@ var (
 type TabMode int
 
 const (
-	New        TabMode = 0
-	Insert     TabMode = 1
-	View       TabMode = 2
-	SelectLink TabMode = 3
+	New           TabMode = 0
+	Insert        TabMode = 1
+	View          TabMode = 2
+	SelectLink    TabMode = 3
+	ViewBookmarks TabMode = 4
 
 	tabYPosition = 20
 	maxHistory   = 5

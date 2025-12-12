@@ -10,7 +10,10 @@ import (
 //
 
 func main() {
-	client := gemini_client.NewGeminiClient()
+	client, err := gemini_client.NewGeminiClient()
+	if err != nil {
+		panic(err)
+	}
 	browser.Start(client)
 
 	// content, _ := os.ReadFile("test_gemtext.txt")

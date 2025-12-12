@@ -16,6 +16,8 @@ const (
 	viewportYPosition    = 5
 	scrollStep           = 5
 	maxUrlLength         = 156
+
+	bookmaksTitle = "Bookmarks"
 )
 
 type hintMatch struct {
@@ -35,6 +37,7 @@ type model struct {
 	height       int
 	geminiClient *gemini_client.GeminiClient
 	hintMode     *hintMode
+	bookmarks    *Bookmarks
 }
 
 func Start(geminiClient *gemini_client.GeminiClient) {
@@ -45,12 +48,37 @@ func Start(geminiClient *gemini_client.GeminiClient) {
 	}
 }
 
+func initialModel(geminiClient *gemini_client.GeminiClient) model {
+	b, _ := LoadBookmarks()
+	m := model{
+		activeTab:    0,
+		tabs:         []*tab{},
+		geminiClient: geminiClient,
+		bookmarks:    b,
+	}
+	m = m.appendNewTab()
+	return m
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	at := m.getActiveTab()
 	currentMode := at.mode
 
 	switch msg := msg.(type) {
+	case editorFinishedMsg:
+		if msg.err != nil {
+			m.updateTabContent(fmt.Sprintf("Failed to edit: %s\n", msg.err.Error()))
+			return m, nil
+		}
+
+		m.bookmarks.loadBookmarksFromFile()
+		m.setPage(&gemini_client.GeminiResponse{Body: m.bookmarks.BookmarksContent}, bookmaksTitle)
+		return m, nil
 	case navigateMsg:
 		return m.handleNavigation(msg.Url)
 	case tea.KeyMsg:
@@ -65,6 +93,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleInsertMode(msg)
 		case View:
 			return m.handleViewMode(msg)
+		case ViewBookmarks:
+			return m.handleViewBookmarksMode(msg)
 		}
 	case tea.WindowSizeMsg:
 		return m.handleResize(msg)
@@ -91,20 +121,6 @@ func (m model) View() string {
 	return docStyle.Render(doc.String())
 }
 
-func initialModel(geminiClient *gemini_client.GeminiClient) model {
-	m := model{
-		activeTab:    0,
-		tabs:         []*tab{},
-		geminiClient: geminiClient,
-	}
-	m = m.appendNewTab()
-	return m
-}
-
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
 func (m model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	updatedTabs := []*tab{}
 
@@ -120,13 +136,40 @@ func (m model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.height = msg.Height
 	m.tabs = updatedTabs
 	return m, nil
+}
 
+func (m model) handleViewBookmarksMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.changeActiveTabMode(View)
+		history := m.getActiveTab().history
+		if len(history) > 0 {
+			item := history[len(history)-1]
+			m.setPage(item.response, item.url)
+		} else {
+			m.setPage(&gemini_client.GeminiResponse{Body: ""}, "New tab")
+		}
+		return m, nil
+	case "e":
+		return m, m.bookmarks.openEditor()
+	case "f":
+		m.changeActiveTabMode(SelectLink)
+		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, SelectLink))
+		m.hintMode = &hintMode{}
+		return m, nil
+	}
+
+	return m, nil
 }
 
 func (m model) handleViewMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		m = m.closeActiveTab()
+		return m, nil
+	case "ctrl+b":
+		m.changeActiveTabMode(ViewBookmarks)
+		m.setPage(&gemini_client.GeminiResponse{Body: m.bookmarks.BookmarksContent}, bookmaksTitle)
 		return m, nil
 	case "H":
 		m.goBack()
@@ -184,7 +227,11 @@ func (m model) handleSelectLinkMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if key == "esc" {
-		m.changeActiveTabMode(View)
+		if m.tabs[m.activeTab].title == "Bookmarks" {
+			m.changeActiveTabMode(ViewBookmarks)
+		} else {
+			m.changeActiveTabMode(View)
+		}
 		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, View))
 		return m, nil
 	}
@@ -229,6 +276,7 @@ func (m model) loadPage(url string) {
 	}
 
 	m.setPage(res, url)
+	m.changeActiveTabMode(View)
 }
 
 func (m model) setPage(res *gemini_client.GeminiResponse, url string) {
@@ -254,7 +302,6 @@ func (m model) setPage(res *gemini_client.GeminiResponse, url string) {
 	m.tabs[m.activeTab].hints = hints
 
 	m.updateTabContent(newTabContent)
-	m.changeActiveTabMode(View)
 	m.tabs[m.activeTab].title = getTabTitle(url)
 	m.tabs[m.activeTab].urlInput.Blur()
 	m.tabs[m.activeTab].viewport.ScrollUp(100)

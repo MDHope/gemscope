@@ -20,9 +20,13 @@ type GeminiClient struct {
 	Timeout    time.Duration
 }
 
-func NewGeminiClient() *GeminiClient {
+func NewGeminiClient() (*GeminiClient, error) {
 	homeDir, _ := os.UserHomeDir()
-	hostsFile := filepath.Join(homeDir, ".gemini_known_hosts")
+	hostsFile := filepath.Join(homeDir, "/gemscope/", ".gemini_known_hosts")
+	dir := filepath.Dir(hostsFile)
+	if err := os.Mkdir(dir, 0755); err != nil && !strings.Contains(err.Error(), "file exists") {
+		return nil, fmt.Errorf("failed to create dir: %w", err)
+	}
 
 	client := &GeminiClient{
 		knownHosts: make(map[string]string),
@@ -31,7 +35,7 @@ func NewGeminiClient() *GeminiClient {
 	}
 
 	client.loadKnownHosts()
-	return client
+	return client, nil
 }
 
 func (c *GeminiClient) Fetch(geminiURL string) (*GeminiResponse, error) {
