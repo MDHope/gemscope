@@ -1,6 +1,18 @@
 package browser
 
+import "github.com/MDHope/gemscope/internal/gemtext"
+
 const hintChars = "fjdkslahgurieowpq"
+
+type hintMatch struct {
+	hint string
+	node *gemtext.Node
+}
+
+type hintMode struct {
+	input   string
+	matches []hintMatch
+}
 
 func generateHints(count int) []string {
 	chars := []rune(hintChars)

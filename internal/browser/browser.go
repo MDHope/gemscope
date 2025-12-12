@@ -7,6 +7,7 @@ import (
 
 	gemini_client "github.com/MDHope/gemscope/internal/gemini-client"
 	"github.com/MDHope/gemscope/internal/gemtext"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -20,16 +21,6 @@ const (
 	bookmaksTitle = "Bookmarks"
 )
 
-type hintMatch struct {
-	hint string
-	node *gemtext.Node
-}
-
-type hintMode struct {
-	input   string
-	matches []hintMatch
-}
-
 type model struct {
 	activeTab    int
 	tabs         []*tab
@@ -38,6 +29,8 @@ type model struct {
 	geminiClient *gemini_client.GeminiClient
 	hintMode     *hintMode
 	bookmarks    *Bookmarks
+	keys         keyMap
+	showFullHelp bool
 }
 
 func Start(geminiClient *gemini_client.GeminiClient) {
@@ -55,6 +48,7 @@ func initialModel(geminiClient *gemini_client.GeminiClient) model {
 		tabs:         []*tab{},
 		geminiClient: geminiClient,
 		bookmarks:    b,
+		keys:         keys,
 	}
 	m = m.appendNewTab()
 	return m
@@ -118,6 +112,8 @@ func (m model) View() string {
 
 	doc.WriteString(fmt.Sprintf("%s\n%s\n%s", at.contentHeaderView(), at.viewport.View(), at.contentFooterView()))
 
+	doc.WriteString(m.renderHelp())
+
 	return docStyle.Render(doc.String())
 }
 
@@ -139,20 +135,23 @@ func (m model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleViewBookmarksMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, m.keys.Bookmarks.QuitMode):
 		m.changeActiveTabMode(View)
 		history := m.getActiveTab().history
 		if len(history) > 0 {
 			item := history[len(history)-1]
 			m.setPage(item.response, item.url)
 		} else {
-			m.setPage(&gemini_client.GeminiResponse{Body: ""}, "New tab")
+			m.setPage(&gemini_client.GeminiResponse{Body: "\n"}, "New tab")
 		}
 		return m, nil
-	case "e":
+	case key.Matches(msg, m.keys.Bookmarks.Editor):
 		return m, m.bookmarks.openEditor()
-	case "f":
+	case key.Matches(msg, m.keys.Global.Help):
+		m.showFullHelp = !m.showFullHelp
+		return m, nil
+	case key.Matches(msg, m.keys.Bookmarks.HintLinks):
 		m.changeActiveTabMode(SelectLink)
 		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, SelectLink))
 		m.hintMode = &hintMode{}
@@ -163,37 +162,40 @@ func (m model) handleViewBookmarksMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleViewMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+	switch {
+	case key.Matches(msg, m.keys.View.CloseTab):
 		m = m.closeActiveTab()
 		return m, nil
-	case "ctrl+b":
+	case key.Matches(msg, m.keys.View.Bookmarks):
 		m.changeActiveTabMode(ViewBookmarks)
 		m.setPage(&gemini_client.GeminiResponse{Body: m.bookmarks.BookmarksContent}, bookmaksTitle)
 		return m, nil
-	case "H":
+	case key.Matches(msg, m.keys.Global.Help):
+		m.showFullHelp = !m.showFullHelp
+		return m, nil
+	case key.Matches(msg, m.keys.View.GoBack):
 		m.goBack()
 		return m, nil
-	case "L":
+	case key.Matches(msg, m.keys.View.FocusUrl):
 		m.changeActiveTabMode(Insert)
 		cmd := m.tabs[m.activeTab].urlInput.Focus()
 		return m, cmd
-	case "j":
+	case key.Matches(msg, m.keys.View.ScrollDown):
 		m.tabs[m.activeTab].viewport.ScrollDown(scrollStep)
 		return m, nil
-	case "k":
+	case key.Matches(msg, m.keys.View.ScrollUp):
 		m.tabs[m.activeTab].viewport.ScrollUp(scrollStep)
 		return m, nil
-	case "{":
+	case key.Matches(msg, m.keys.View.PrevTab):
 		m = m.previousTab()
 		return m, nil
-	case "}":
+	case key.Matches(msg, m.keys.View.NextTab):
 		m = m.nextTab()
 		return m, nil
-	case "ctrl+t":
+	case key.Matches(msg, m.keys.View.NewTab):
 		m = m.appendNewTab()
 		return m, nil
-	case "f":
+	case key.Matches(msg, m.keys.View.HintLinks):
 		m.changeActiveTabMode(SelectLink)
 		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, SelectLink))
 		m.hintMode = &hintMode{}
@@ -205,12 +207,12 @@ func (m model) handleViewMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "enter":
+		switch {
+		case key.Matches(msg, m.keys.Insert.Submit):
 			inputValue := m.tabs[m.activeTab].urlInput.Value()
 			m.loadPage(inputValue)
 			return m, nil
-		case "esc":
+		case key.Matches(msg, m.keys.Insert.QuitMode):
 			m.changeActiveTabMode(View)
 			m.tabs[m.activeTab].urlInput.Blur()
 			return m, nil
@@ -224,9 +226,10 @@ func (m model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleSelectLinkMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
+	char := msg.String()
 
-	if key == "esc" {
+	switch {
+	case key.Matches(msg, m.keys.Links.QuitMode):
 		if m.tabs[m.activeTab].title == "Bookmarks" {
 			m.changeActiveTabMode(ViewBookmarks)
 		} else {
@@ -234,12 +237,18 @@ func (m model) handleSelectLinkMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.updateTabContent(renderGemtext(m.tabs[m.activeTab].parsed, m.tabs[m.activeTab].hints, View))
 		return m, nil
-	}
-
-	if key == "backspace" && len(m.hintMode.input) > 0 {
-		m.hintMode.input = m.hintMode.input[:len(m.hintMode.input)-1]
-	} else if len(key) == 1 && strings.Contains(hintChars, key) {
-		m.hintMode.input += key
+	case key.Matches(msg, m.keys.Global.Help):
+		m.showFullHelp = !m.showFullHelp
+		return m, nil
+	case char == "backspace":
+		if len(m.hintMode.input) > 0 {
+			m.hintMode.input = m.hintMode.input[:len(m.hintMode.input)-1]
+		}
+	default:
+		key := msg.String()
+		if len(char) == 1 && strings.Contains(hintChars, key) {
+			m.hintMode.input += char
+		}
 	}
 
 	m.hintMode.matches = nil
